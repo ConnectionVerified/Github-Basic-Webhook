@@ -1,0 +1,124 @@
+require 'sinatra'
+require 'json'
+require 'mail'
+
+post '/payload' do
+  push = JSON.parse(request.body.read) # parse the JSON
+
+  # gather the data we're looking for
+  pusher = push["pusher"]["name"]
+  branch = push["ref"]
+
+  # get a list of all the files touched
+  files = push["commits"].map do |commit|
+    commit['added'] + commit['modified'] + commit['removed']
+  end
+  files = files.flatten.uniq
+
+  # check for our criteria
+  if pusher == 'schacon' &&
+     branch == 'ref/heads/special-branch' &&
+     files.include?('special-file.txt')
+
+    Mail.deliver do
+      from     'tchacon@example.com'
+      to       'tchacon@example.com'
+      subject  'Scott Changed the File'
+      body     "ALARM"
+    end
+  end
+end
+--------------------------------------------------------OTHER SCRIPTS FOR THE WEBHOOK--------------------------------------------------------------------------------
+$ curl https://api.github.com/users/schacon
+{
+  "login": "schacon",
+  "id": 70,
+  "avatar_url": "https://avatars.githubusercontent.com/u/70",
+# …
+  "name": "Scott Chacon",
+  "company": "GitHub",
+  "following": 19,
+  "created_at": "2008-01-27T17:19:28Z",
+  "updated_at": "2014-06-10T02:37:23Z"
+}
+------------------------------------------------------------ANOTHER VERSION OF THE SCRIPT ABOVE--------------------------------------------------------------------
+$ curl https://api.github.com/gitignore/templates/Java
+{
+  "name": "Java",
+  "source": "*.class
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.ear
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+"
+}
+--------------------------------------------------GENERATED APPLICATIONS SETTINGS----------------------------------------------------------------------
+$ curl -H "Content-Type: application/json" \
+       -H "Authorization: token TOKEN" \
+       --data '{"body":"A new comment, :+1:"}' \
+       https://api.github.com/repos/schacon/blink/issues/6/comments
+{
+  "id": 58322100,
+  "html_url": "https://github.com/schacon/blink/issues/6#issuecomment-58322100",
+  ...
+  "user": {
+    "login": "tonychacon",
+    "id": 7874698,
+    "avatar_url": "https://avatars.githubusercontent.com/u/7874698?v=2",
+    "type": "User",
+  },
+  "created_at": "2014-10-08T07:48:19Z",
+  "updated_at": "2014-10-08T07:48:19Z",
+  "body": "A new comment, :+1:"
+}
+-------------------------------------------------------------------STATUS PULL REQUEST-------------------------------------------------------------
+require 'httparty'
+require 'sinatra'
+require 'json'
+
+post '/payload' do
+  push = JSON.parse(request.body.read) # parse the JSON
+  repo_name = push['repository']['full_name']
+
+  # look through each commit message
+  push["commits"].each do |commit|
+
+    # look for a Signed-off-by string
+    if /Signed-off-by/.match commit['message']
+      state = 'success'
+      description = 'Successfully signed off!'
+    else
+      state = 'failure'
+      description = 'No signoff found.'
+    end
+
+    # post status to GitHub
+    sha = commit["id"]
+    status_url = "https://api.github.com/repos/#{repo_name}/statuses/#{sha}"
+
+    status = {
+      "state"       => state,
+      "description" => description,
+      "target_url"  => "http://example.com/how-to-signoff",
+      "context"     => "validate/signoff"
+    }
+    HTTParty.post(status_url,
+      :body => status.to_json,
+      :headers => {
+        'Content-Type'  => 'application/json',
+        'User-Agent'    => 'tonychacon/signoff',
+        'Authorization' => "token #{ENV['TOKEN']}" }
+    )
+  end
+end
+--------------------------------------------------------------------------INSTRUCTIONS FOR THE SCRIPT ABOVE----------------------------------------------------------
+/repos/<user>/<repo>/statuses/<commit_sha>
+--------------------------------------------------------------------------APPLICATION SCRIPT INSTRUCTION-------------------------------------------------------------
+repos/<user>/<repo>/issues/<num>/comments
